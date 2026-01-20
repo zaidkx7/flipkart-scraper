@@ -6,9 +6,20 @@ mysql = MysqlConnection()
 router = APIRouter(prefix='/products', tags=['products'])
 
 @router.get('/')
-def get_products():
-    products = mysql.get_products()
-    return products
+def get_products(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page")
+):
+    products, total = mysql.get_products(page, limit)
+    total_pages = (total + limit - 1) // limit
+    
+    return {
+        "items": products,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
 
 @router.get('/category/{category}')
 def get_products_by_category(category: str):
@@ -21,9 +32,21 @@ def get_products_by_brand(brand: str):
     return products
 
 @router.get('/search')
-def search_products(q: str = Query(..., description="Search query")):
-    products = mysql.search_products(q)
-    return products
+def search_products(
+    q: str = Query(..., description="Search query"),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page")
+):
+    products, total = mysql.search_products(q, page, limit)
+    total_pages = (total + limit - 1) // limit
+    
+    return {
+        "items": products,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
 
 @router.get('/filter/price')
 def get_products_by_price_range(

@@ -110,183 +110,120 @@ Flipkart/
 └── README.md           # Project documentation
 ```
 
-## 🔧 Prerequisites
+## 🚀 Quick Start Guide
 
-Before you begin, ensure you have the following installed:
+Follow these steps to get the project running on your local machine.
 
+### 1. Prerequisites
+
+Ensure you have the following installed:
 - **Python 3.8+** - [Download Python](https://python.org/downloads/)
 - **Node.js 18+** - [Download Node.js](https://nodejs.org/)
-- **MySQL 8.0+** - [Download MySQL](https://dev.mysql.com/downloads/)
+- **MySQL 8.0+** - [Download MySQL](https://dev.mysql.com/downloads/) or [XAMPP](https://www.apachefriends.org/index.html)
 - **Git** - [Download Git](https://git-scm.com/downloads/)
 
-## 🚀 Installation
-
-### 1. Clone the Repository
+### 2. Clone the Repository
 
 ```bash
 git clone https://github.com/zaidkx7/flipkart-scraper.git
-cd Flipkart
+cd flipkart-scraper
 ```
 
-### 2. Backend Setup
+### 3. Backend Setup (FastAPI)
 
-```bash
-# Navigate to backend directory
-cd backend
+1. **Navigate to the backend directory:**
+   ```bash
+   cd backend
+   ```
 
-# Create virtual environment
-python -m venv venv
+2. **Create and Activate Virtual Environment:**
+   ```bash
+   # Windows
+   python -m venv venv
+   venv\Scripts\activate
 
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
+   # macOS/Linux
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
 
-# Install dependencies
-pip install -r requirements.txt
-```
+3. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### 3. Frontend Setup
+4. **Configure Environment Variables:**
+   Create a file named `.env` in the `backend` folder and add your database credentials:
+   ```ini
+   # backend/.env
+   MYSQL_HOST=localhost
+   MYSQL_USER=root
+   MYSQL_PASSWORD=your_password
+   MYSQL_DB=flipkart
+   ```
 
-```bash
-# Navigate to frontend directory
-cd ../frontend
+5. **Database Setup:**
+   First, make sure your MySQL server is running and create the database:
+   ```sql
+   -- Run this in your MySQL client
+   CREATE DATABASE flipkart;
+   ```
 
-# Install dependencies
-npm install
-# or
-yarn install
-```
+   Then, create the tables:
+   ```bash
+   # From the backend directory
+   python alchemy/create_tables.py
+   ```
 
-### 4. Database Setup
+6. **Start the Backend Server:**
+   ```bash
+   python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+   
+   # or
 
-```sql
--- Create MySQL database
-CREATE DATABASE flipkart;
+   python api/main.py
+   ```
+   Server will start at `http://localhost:8000`.
 
--- Create user (optional)
-CREATE USER 'flipkart_user'@'localhost' IDENTIFIED BY 'your_password';
-GRANT ALL PRIVILEGES ON flipkart_products.* TO 'flipkart_user'@'localhost';
-FLUSH PRIVILEGES;
-```
+### 4. Frontend Setup (Next.js)
 
-## ⚙️ Configuration
+1. **Navigate to the frontend directory:**
+   Open a new terminal and run:
+   ```bash
+   cd frontend
+   ```
 
-### Backend Configuration
+2. **Install Dependencies:**
+   ```bash
+   npm install
 
-Create `backend/.env`:
+   # if this doesn't work try this
+   npm install --force
+   ```
 
-```bash
-# Database configuration
-MYSQL_HOST='localhost'
-MYSQL_PORT=3306
-MYSQL_USER='root'
-MYSQL_PASSWORD=''
-MYSQL_DB='flipkart'
+3. **Configure Environment Variables:**
+   Create a file named `.env.local` in the `frontend` folder:
+   ```ini
+   # frontend/.env.local
+   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+   ```
 
-cd backend\alchemy
-python create_tables.py
-```
+4. **Start the Frontend Development Server:**
+   ```bash
+   npm run dev
+   ```
+   The app will be available at `http://localhost:3000`.
 
-### Frontend Configuration
-
-Create `frontend/.env.local`:
-
-```bash
-# API Configuration
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-
-# Development Settings
-NODE_ENV=development
-```
-
-## 🎯 Usage
-
-### Start the Backend Server
-
-```bash
-cd backend
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-
-# or
-
-cd backend\api
-python main.py
-```
 
 The API will be available at: `http://localhost:8000`
 - API Documentation: `http://localhost:8000/docs`
 - Alternative docs: `http://localhost:8000/redoc`
-
-### Start the Frontend Server
-
-```bash
-cd frontend
-npm run dev
-```
-
-The web interface will be available at: `http://localhost:3000`
 
 ### Run the Scraper
 
 ```bash
 cd backend
 python modules/flipkart/main.py
-```
-
-## 📚 API Documentation
-
-### Core Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/products/` | Get all products |
-| `GET` | `/api/products/{id}` | Get specific product |
-| `GET` | `/api/products/search?q={query}` | Search products |
-| `GET` | `/api/products/category/{category}` | Filter by category |
-| `GET` | `/api/products/brand/{brand}` | Filter by brand |
-
-### Advanced Filtering
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/products/filter/price?min_price={min}&max_price={max}` | Price range filter |
-| `GET` | `/api/products/filter/rating?min_rating={rating}` | Minimum rating filter |
-| `GET` | `/api/products/filter/availability?status={status}` | Availability filter |
-| `GET` | `/api/products/trending?limit={limit}` | Trending products |
-| `GET` | `/api/products/discounted` | Products with discounts |
-| `GET` | `/api/products/stats` | Product statistics |
-
-### Example Response
-
-```json
-{
-  "id": 1,
-  "product_id": "MOBH7443MMBCWPPG",
-  "title": "POCO C75 5G (Aqua Bliss, 64 GB)",
-  "url": "https://www.flipkart.com/poco-c75-5g-aqua-bliss-64-gb/p/...",
-  "rating": {
-    "average": 4.3,
-    "count": 93979,
-    "reviewCount": 4443
-  },
-  "pricing": {
-    "prices": [
-      {"strikeOff": true, "value": 10999},
-      {"strikeOff": false, "value": 7699}
-    ],
-    "totalDiscount": 30
-  },
-  "specifications": [
-    "4 GB RAM | 64 GB ROM | Expandable Upto 1 TB",
-    "17.48 cm (6.88 inch) HD+ Display",
-    "50MP Rear Camera | 5MP Front Camera"
-  ],
-  "category": "mobile",
-  "availability": "IN_STOCK",
-  "source": "flipkart"
-}
 ```
 
 ## 🎨 Frontend Features
@@ -320,87 +257,6 @@ python modules/flipkart/main.py
 - **Client-side data persistence**
 - **Optimized API calls** with fallback mechanisms
 - **Loading states** and error boundaries
-
-## 🔧 Development
-
-### Backend Development
-
-```bash
-# Install development dependencies
-pip install pytest black flake8 mypy
-
-# Run tests
-pytest
-
-# Format code
-black .
-
-# Lint code
-flake8 .
-
-# Type checking
-mypy .
-```
-
-### Frontend Development
-
-```bash
-# Run development server with hot reload
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
-
-# Lint code
-npm run lint
-
-# Type checking
-npx tsc --noEmit
-```
-
-### Database Management
-
-```bash
-# Create database tables
-cd backend
-python alchemy/create_tables.py
-
-# Reset database (caution!)
-python -c "from alchemy.database import MysqlConnection; MysqlConnection().reset_database()"
-```
-
-## 🚀 Deployment
-
-### Backend Deployment
-
-1. **Production Environment Setup**
-   ```bash
-   pip install gunicorn
-   gunicorn api.main:app -w 4 -k uvicorn.workers.UvicornWorker
-   ```
-
-2. **Environment Variables**
-   ```bash
-   export DB_URL="mysql+pymysql://user:pass@host/db"
-   export DEBUG_MODE=False
-   ```
-
-### Frontend Deployment
-
-1. **Build for Production**
-   ```bash
-   npm run build
-   npm start
-   ```
-
-2. **Deploy to Vercel**
-   ```bash
-   npm install -g vercel
-   vercel --prod
-   ```
 
 ## 🤝 Contributing
 
@@ -455,6 +311,6 @@ If you encounter any issues or have questions:
 
 **⭐ Star this repository if you find it helpful!**
 
-Made with ❤️ by [Muhammad Zaid](https://zaidkx7.github.io/)
+Made with ❤️ by [Muhammad Zaid](https://zaid.sh/)
 
 </div>

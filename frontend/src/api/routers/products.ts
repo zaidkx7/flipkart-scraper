@@ -116,32 +116,37 @@ export interface ApiResponse<T> {
   status?: string;
 }
 
+// Paginated response interface
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
 // Products API functions
 export const productsApi = {
-  // Get all products with caching
-  getAllProducts: async (useCache: boolean = true): Promise<Product[]> => {
-    const cacheKey = 'all_products';
-    
+  // Get all products with caching and pagination
+  getAllProducts: async (page: number = 1, limit: number = 20): Promise<PaginatedResponse<Product>> => {
+    const cacheKey = `products_page_${page}_limit_${limit}`;
+
     // Try cache first
-    if (useCache) {
-      const cached = productCache.get<Product[]>(cacheKey);
-      if (cached) {
-        console.log('🚀 Products loaded from cache');
-        return cached;
-      }
+    const cached = productCache.get<PaginatedResponse<Product>>(cacheKey);
+    if (cached) {
+      console.log('🚀 Products loaded from cache');
+      return cached;
     }
 
     try {
-      console.log('📡 Fetching products from API');
-      const response = await api.get<Product[]>('/api/products/');
-      const products = response.data;
-      
+      console.log(`📡 Fetching products page ${page} from API`);
+      const response = await api.get<PaginatedResponse<Product>>(`/api/products/?page=${page}&limit=${limit}`);
+      const data = response.data;
+
       // Cache the results
-      if (useCache) {
-        productCache.set(cacheKey, products);
-      }
-      
-      return products;
+      productCache.set(cacheKey, data);
+
+      return data;
     } catch (error) {
       console.error('Error fetching products:', error);
       throw new Error('Failed to fetch products');
@@ -160,11 +165,11 @@ export const productsApi = {
   },
 
   // Enhanced search with fuzzy matching and caching
-  searchProducts: async (query: string): Promise<Product[]> => {
-    if (!query.trim()) return [];
-    
-    const cacheKey = `search_${query.toLowerCase().trim()}`;
-    const cached = productCache.get<Product[]>(cacheKey);
+  searchProducts: async (query: string, page: number = 1, limit: number = 20): Promise<PaginatedResponse<Product>> => {
+    if (!query.trim()) return { items: [], total: 0, page: 1, limit: 20, total_pages: 0 };
+
+    const cacheKey = `search_${query.toLowerCase().trim()}_page_${page}_limit_${limit}`;
+    const cached = productCache.get<PaginatedResponse<Product>>(cacheKey);
     if (cached) {
       console.log('🔍 Search results loaded from cache');
       return cached;
@@ -172,17 +177,18 @@ export const productsApi = {
 
     try {
       // First try backend search
-      const response = await api.get<Product[]>(`/api/products/search?q=${encodeURIComponent(query)}`);
+      const response = await api.get<PaginatedResponse<Product>>(`/api/products/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
       const results = response.data;
       productCache.set(cacheKey, results, 2 * 60 * 1000); // 2 minutes cache
       return results;
     } catch (error) {
       console.error('Backend search failed, using client-side search:', error);
-      
+
       // Advanced client-side search with scoring
-      const allProducts = await productsApi.getAllProducts();
+      const response = await productsApi.getAllProducts(1, 1000); // Fetch mostly all for client side
+      const allProducts = response.items;
       const searchTerms = query.toLowerCase().trim().split(/\s+/);
-      
+
       const scoredResults = allProducts.map(product => {
         let score = 0;
         const searchableText = [
@@ -195,28 +201,42 @@ export const productsApi = {
           // Exact matches get higher scores
           if (product.title.toLowerCase().includes(term)) score += 10;
           if (product.category.toLowerCase().includes(term)) score += 8;
-          
+
           // Specification matches
           product.specifications.forEach(spec => {
             if (spec.toLowerCase().includes(term)) score += 5;
           });
-          
+
           // Fuzzy matching for typos
           if (searchableText.includes(term)) score += 3;
-          
+
           // Partial matches
           if (searchableText.split(' ').some(word => word.startsWith(term))) score += 2;
         });
 
         return { product, score };
       })
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(({ product }) => product);
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(({ product }) => product);
+
+      // Manual client-side pagination
+      const total = scoredResults.length;
+      const total_pages = Math.ceil(total / limit);
+      const offset = (page - 1) * limit;
+      const paginatedItems = scoredResults.slice(offset, offset + limit);
+
+      const paginatedResult = {
+        items: paginatedItems,
+        total,
+        page,
+        limit,
+        total_pages
+      };
 
       // Cache client-side results too
-      productCache.set(cacheKey, scoredResults, 2 * 60 * 1000);
-      return scoredResults;
+      productCache.set(cacheKey, paginatedResult, 2 * 60 * 1000);
+      return paginatedResult;
     }
   },
 
@@ -236,13 +256,14 @@ export const productsApi = {
       return results;
     } catch (error) {
       console.error(`Backend category filter failed for ${category}, using client-side:`, error);
-      
+
       // Optimized client-side filtering
-      const allProducts = await productsApi.getAllProducts();
-      const results = allProducts.filter(product => 
+      const response = await productsApi.getAllProducts(1, 1000);
+      const allProducts = response.items;
+      const results = allProducts.filter(product =>
         product.category.toLowerCase() === category.toLowerCase()
       );
-      
+
       productCache.set(cacheKey, results);
       return results;
     }
@@ -264,19 +285,20 @@ export const productsApi = {
       return results;
     } catch (error) {
       console.error(`Backend brand filter failed for ${brand}, using client-side:`, error);
-      
+
       // Enhanced brand matching
-      const allProducts = await productsApi.getAllProducts();
+      const response = await productsApi.getAllProducts(1, 1000);
+      const allProducts = response.items;
       const brandLower = brand.toLowerCase();
-      
+
       const results = allProducts.filter(product => {
         const titleLower = product.title.toLowerCase();
         // Match brand name at start of title or as separate word
-        return titleLower.startsWith(brandLower) || 
-               titleLower.includes(` ${brandLower} `) ||
-               titleLower.split(' ')[0] === brandLower;
+        return titleLower.startsWith(brandLower) ||
+          titleLower.includes(` ${brandLower} `) ||
+          titleLower.split(' ')[0] === brandLower;
       });
-      
+
       productCache.set(cacheKey, results);
       return results;
     }
@@ -303,8 +325,9 @@ export const productsApi = {
       return stats;
     } catch (error) {
       console.error('Backend stats failed, calculating client-side:', error);
-      
-      const products = await productsApi.getAllProducts();
+
+      const response = await productsApi.getAllProducts(1, 1000);
+      const products = response.items;
       const stats = {
         total: products.length,
         byCategory: {} as Record<string, number>,
@@ -318,10 +341,10 @@ export const productsApi = {
       products.forEach(product => {
         // Category stats
         stats.byCategory[product.category] = (stats.byCategory[product.category] || 0) + 1;
-        
+
         // Availability stats
         stats.byAvailability[product.availability] = (stats.byAvailability[product.availability] || 0) + 1;
-        
+
         // Rating stats
         if (product.rating && product.rating.average) {
           totalRating += product.rating.average;
@@ -330,14 +353,14 @@ export const productsApi = {
       });
 
       stats.avgRating = ratingCount > 0 ? totalRating / ratingCount : 0;
-      
+
       productCache.set(cacheKey, stats, 15 * 60 * 1000);
       return stats;
     }
   },
 
   // Advanced filtering methods not in backend
-  
+
   // Filter products by price range
   getProductsByPriceRange: async (minPrice: number, maxPrice: number): Promise<Product[]> => {
     const cacheKey = `price_${minPrice}_${maxPrice}`;
@@ -354,9 +377,10 @@ export const productsApi = {
       return results;
     } catch (error) {
       console.error('Backend price filter failed, using client-side:', error);
-      
+
       // Fallback to client-side filtering
-      const allProducts = await productsApi.getAllProducts();
+      const response = await productsApi.getAllProducts(1, 1000);
+      const allProducts = response.items;
       const results = allProducts.filter(product => {
         const currentPrice = product.pricing.prices.find(p => !p.strikeOff)?.value || 0;
         return currentPrice >= minPrice && currentPrice <= maxPrice;
@@ -383,9 +407,10 @@ export const productsApi = {
       return results;
     } catch (error) {
       console.error('Backend rating filter failed, using client-side:', error);
-      
-      const allProducts = await productsApi.getAllProducts();
-      const results = allProducts.filter(product => 
+
+      const response = await productsApi.getAllProducts(1, 1000);
+      const allProducts = response.items;
+      const results = allProducts.filter(product =>
         product.rating && product.rating.average >= minRating
       );
 
@@ -410,9 +435,10 @@ export const productsApi = {
       return results;
     } catch (error) {
       console.error('Backend availability filter failed, using client-side:', error);
-      
-      const allProducts = await productsApi.getAllProducts();
-      const results = allProducts.filter(product => 
+
+      const response = await productsApi.getAllProducts(1, 1000);
+      const allProducts = response.items;
+      const results = allProducts.filter(product =>
         product.availability === availability
       );
 
@@ -437,7 +463,7 @@ export const productsApi = {
       .map(([key, value]) => `${key}:${Array.isArray(value) ? value.join(',') : value}`)
       .sort()
       .join('|');
-    
+
     const cacheKey = `multi_filter_${btoa(filterKey)}`;
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
@@ -445,8 +471,9 @@ export const productsApi = {
       return cached;
     }
 
-    const allProducts = await productsApi.getAllProducts();
-    
+    const response = await productsApi.getAllProducts(1, 1000);
+    const allProducts = response.items;
+
     const results = allProducts.filter(product => {
       // Category filter
       if (filters.category && product.category.toLowerCase() !== filters.category.toLowerCase()) {
@@ -520,16 +547,17 @@ export const productsApi = {
       return results;
     } catch (error) {
       console.error('Backend trending products failed, using client-side:', error);
-      
-      const allProducts = await productsApi.getAllProducts();
-      
+
+      const response = await productsApi.getAllProducts(1, 1000);
+      const allProducts = response.items;
+
       // Calculate trending score based on rating and review count
       const trending = allProducts
         .filter(product => product.rating && product.rating.average > 0)
         .map(product => ({
           product,
-          trendingScore: (product.rating.average * 0.7) + 
-                         (Math.min(product.rating.reviewCount / 1000, 1) * 0.3) * 5
+          trendingScore: (product.rating.average * 0.7) +
+            (Math.min(product.rating.reviewCount / 1000, 1) * 0.3) * 5
         }))
         .sort((a, b) => b.trendingScore - a.trendingScore)
         .slice(0, limit)
@@ -556,10 +584,11 @@ export const productsApi = {
       return results;
     } catch (error) {
       console.error('Backend discounted products failed, using client-side:', error);
-      
-      const allProducts = await productsApi.getAllProducts();
-      const results = allProducts.filter(product => 
-        product.pricing.totalDiscount > 0 && 
+
+      const response = await productsApi.getAllProducts(1, 1000);
+      const allProducts = response.items;
+      const results = allProducts.filter(product =>
+        product.pricing.totalDiscount > 0 &&
         product.pricing.prices.some(p => p.strikeOff) // Has original price
       );
 
