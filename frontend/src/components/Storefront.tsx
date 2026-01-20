@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Search, ShoppingCart, Plus, ChevronUp, ListFilter, SearchX, ShoppingBag, SquareMinus, RefreshCw, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ListFilter, SearchX, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Battery } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,28 +14,20 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { productsApi } from "@/api/routers/products";
-import { 
-  transformApiProduct, 
-  filterProducts, 
-  sortProducts, 
+import {
+  transformApiProduct,
+  filterProducts,
+  sortProducts,
   getFilterOptions,
-  type FrontendProduct 
+  type FrontendProduct
 } from "@/lib/product-utils";
 
 // Use the FrontendProduct type from utils
 type Product = FrontendProduct;
 
-interface CartItem {
-  product: Product;
-  quantity: number;
-  variant: {
-    color: string;
-    storage: string;
-  };
-}
+// CartItem interface removed - no shopping functionality needed
 
 interface Filters {
   brands: string[];
@@ -83,23 +75,12 @@ export default function Storefront() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
   const [quickViewImageIndex, setQuickViewImageIndex] = useState(0);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [checkoutStep, setCheckoutStep] = useState<"cart" | "checkout" | "success">("cart");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [promoCode, setPromoCode] = useState("");
-  const [checkoutForm, setCheckoutForm] = useState({
-    email: "",
-    firstName: "",
-    lastName: "",
-    address: "",
-    city: "",
-    postalCode: "",
-    country: "US",
-    phone: "",
-    shippingMethod: "standard"
-  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -118,24 +99,24 @@ export default function Storefront() {
       if (selectedProduct) {
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
-          setSelectedImageIndex(prev => 
+          setSelectedImageIndex(prev =>
             prev <= 0 ? selectedProduct.images.length - 1 : prev - 1
           );
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
-          setSelectedImageIndex(prev => 
+          setSelectedImageIndex(prev =>
             prev >= selectedProduct.images.length - 1 ? 0 : prev + 1
           );
         }
       } else if (quickViewProduct) {
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
-          setQuickViewImageIndex(prev => 
+          setQuickViewImageIndex(prev =>
             prev <= 0 ? quickViewProduct.images.length - 1 : prev - 1
           );
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
-          setQuickViewImageIndex(prev => 
+          setQuickViewImageIndex(prev =>
             prev >= quickViewProduct.images.length - 1 ? 0 : prev + 1
           );
         }
@@ -148,19 +129,36 @@ export default function Storefront() {
     }
   }, [selectedProduct, quickViewProduct]);
 
-  // Load products from API on mount
+  // Load products from API on mount and when pagination changes
   useEffect(() => {
     const loadProducts = async () => {
       try {
         setLoading(true);
         setError(null);
-        const apiProducts = await productsApi.getAllProducts();
+
+        let response;
+        if (searchQuery.trim()) {
+          // Use search endpoint if query exists
+          response = await productsApi.searchProducts(searchQuery, currentPage, pageSize);
+        } else {
+          // Otherwise get all products
+          response = await productsApi.getAllProducts(currentPage, pageSize);
+        }
+
+        const apiProducts = response.items;
+
+        // Update pagination state
+        setTotalItems(response.total);
+        setTotalPages(response.total_pages);
+
         const transformedProducts = apiProducts.map(transformApiProduct);
-        
+
         setAllProducts(transformedProducts);
         setProducts(transformedProducts);
-        
-        // Update filter options based on loaded products
+
+        // Update filter options based on loaded products (Note: For correct global filtering, 
+        // we might typically need a separate endpoint for options, but using current page for now 
+        // or we can fetch a larger set for filters if needed. Sticking to current page for speed.)
         const options = getFilterOptions(transformedProducts);
         setFilterOptions(prev => ({
           ...prev,
@@ -171,71 +169,21 @@ export default function Storefront() {
           network: options.network,
           priceRange: options.priceRange,
         }));
-        
-        // Update initial filter price range
-        setFilters(prev => ({
-          ...prev,
-          priceRange: options.priceRange,
-        }));
-        
-      } catch (error) {
-        console.error('Failed to load products:', error);
-        setError('Failed to load products. Please try again.');
-        toast.error('Failed to load products');
+      } catch (err) {
+        setError('Failed to load products. Please try again later.');
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
 
-    loadProducts();
-  }, []);
-
-  // Load cart from localStorage on mount
-  useEffect(() => {
-    const savedCart = localStorage.getItem("storefront-cart");
-    if (savedCart) {
-      try {
-        setCart(JSON.parse(savedCart));
-      } catch (error) {
-        console.error("Failed to load cart:", error);
-      }
-    }
-  }, []);
-
-  // Save cart to localStorage
-  useEffect(() => {
-    localStorage.setItem("storefront-cart", JSON.stringify(cart));
-  }, [cart]);
-
-  // Debounced search
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (searchQuery.trim()) {
-        setLoading(true);
-        try {
-          // Try API search first, fallback to local filtering
-          const searchResults = await productsApi.searchProducts(searchQuery);
-          const transformedResults = searchResults.map(transformApiProduct);
-          setProducts(transformedResults);
-        } catch (error) {
-          console.error('Search failed:', error);
-          // Fallback to local search
-          const filtered = allProducts.filter(product =>
-            product.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            product.model.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            product.description.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-          setProducts(filtered);
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        setProducts(allProducts);
-      }
-    }, 500);
+    // Debounce search requests
+    const timer = setTimeout(() => {
+      loadProducts();
+    }, searchQuery ? 500 : 0);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, allProducts]);
+  }, [currentPage, pageSize, searchQuery]); // Add searchQuery to dependencies
 
   // Filter and sort products
   const filteredAndSortedProducts = useMemo(() => {
@@ -243,50 +191,10 @@ export default function Storefront() {
     return sortProducts(filtered, sortBy);
   }, [products, filters, sortBy]);
 
-  const addToCart = useCallback((product: Product, quantity: number = 1, variant = { color: product.specs.color, storage: product.specs.storage }) => {
-    setCart(prev => {
-      const existingItem = prev.find(item => 
-        item.product.id === product.id && 
-        item.variant.color === variant.color &&
-        item.variant.storage === variant.storage
-      );
-      
-      if (existingItem) {
-        return prev.map(item =>
-          item === existingItem
-            ? { ...item, quantity: item.quantity + quantity }
-            : item
-        );
-      } else {
-        return [...prev, { product, quantity, variant }];
-      }
-    });
-    
-    toast.success(`Added ${product.model} to cart`, {
-      action: {
-        label: "View Cart",
-        onClick: () => setCartOpen(true)
-      }
-    });
+  // Open product on Flipkart
+  const openOnFlipkart = useCallback((product: Product) => {
+    window.open(product.url, '_blank', 'noopener,noreferrer');
   }, []);
-
-  const removeFromCart = useCallback((itemIndex: number) => {
-    setCart(prev => prev.filter((_, index) => index !== itemIndex));
-    toast.success("Item removed from cart");
-  }, []);
-
-  const updateCartQuantity = useCallback((itemIndex: number, newQuantity: number) => {
-    if (newQuantity <= 0) {
-      removeFromCart(itemIndex);
-      return;
-    }
-    
-    setCart(prev => 
-      prev.map((item, index) =>
-        index === itemIndex ? { ...item, quantity: newQuantity } : item
-      )
-    );
-  }, [removeFromCart]);
 
   const clearFilters = useCallback(() => {
     setFilters({
@@ -305,48 +213,29 @@ export default function Storefront() {
   const refreshProducts = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-      const apiProducts = await productsApi.getAllProducts();
-      const transformedProducts = apiProducts.map(transformApiProduct);
-      
-      setAllProducts(transformedProducts);
+      productsApi.clearCache();
+      const response = await productsApi.getAllProducts(currentPage, pageSize);
+      const transformedProducts = response.items.map(transformApiProduct);
       setProducts(transformedProducts);
-      
-      toast.success('Products refreshed successfully');
-    } catch (error) {
-      console.error('Failed to refresh products:', error);
-      setError('Failed to refresh products');
+      setAllProducts(transformedProducts);
+      setTotalItems(response.total);
+      setTotalPages(response.total_pages);
+      toast.success('Products refreshed');
+    } catch (err) {
       toast.error('Failed to refresh products');
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const cartTotal = useMemo(() => {
-    return cart.reduce((total, item) => total + (item.product.price * item.quantity), 0);
-  }, [cart]);
-
-  const cartCount = useMemo(() => {
-    return cart.reduce((count, item) => count + item.quantity, 0);
-  }, [cart]);
-
-  const handleCheckout = useCallback(async () => {
-    setLoading(true);
-    // Mock checkout API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setLoading(false);
-    setCheckoutStep("success");
-    toast.success("Order placed successfully!");
-  }, []);
+  }, [currentPage, pageSize]);
 
   // Image navigation handlers
   const nextImage = useCallback((isQuickView = false) => {
     if (isQuickView && quickViewProduct) {
-      setQuickViewImageIndex(prev => 
+      setQuickViewImageIndex(prev =>
         prev >= quickViewProduct.images.length - 1 ? 0 : prev + 1
       );
     } else if (selectedProduct) {
-      setSelectedImageIndex(prev => 
+      setSelectedImageIndex(prev =>
         prev >= selectedProduct.images.length - 1 ? 0 : prev + 1
       );
     }
@@ -354,11 +243,11 @@ export default function Storefront() {
 
   const prevImage = useCallback((isQuickView = false) => {
     if (isQuickView && quickViewProduct) {
-      setQuickViewImageIndex(prev => 
+      setQuickViewImageIndex(prev =>
         prev <= 0 ? quickViewProduct.images.length - 1 : prev - 1
       );
     } else if (selectedProduct) {
-      setSelectedImageIndex(prev => 
+      setSelectedImageIndex(prev =>
         prev <= 0 ? selectedProduct.images.length - 1 : prev - 1
       );
     }
@@ -375,7 +264,7 @@ export default function Storefront() {
   const FilterSection = () => (
     <div className="space-y-6 p-4">
 
-      
+
       {/* Price Range */}
       <div>
         <Label className="text-sm font-medium mb-3 block">
@@ -397,8 +286,8 @@ export default function Storefront() {
 
       <Separator />
 
-        {/* Brand Filter */}
-        <div>
+      {/* Brand Filter */}
+      <div>
         <Label className="text-sm font-medium mb-3 block">Brand</Label>
         <div className="space-y-2">
           {filterOptions.brands.map(brand => (
@@ -496,21 +385,34 @@ export default function Storefront() {
   const ProductCard = ({ product }: { product: Product }) => (
     <Card className="group cursor-pointer transition-all hover:shadow-lg h-full flex flex-col">
       <CardHeader className="p-0">
-        <div className="aspect-square-max overflow-hidden rounded-t-lg">
-          <img
-            src={product.image}
-            alt={`${product.brand} ${product.model}`}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            onClick={() => setSelectedProduct(product)}
-          />
+        <div className="relative">
+          <div className="h-48 flex items-center justify-center p-4 bg-white rounded-t-lg relative">
+            <img
+              src={product.image}
+              alt={`${product.brand} ${product.model}`}
+              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+              onClick={() => setSelectedProduct(product)}
+            />
+            {product.discount > 0 && (
+              <Badge className="absolute top-2 right-2 bg-green-600 hover:bg-green-700">
+                {product.discount}% OFF
+              </Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-4 flex-1 flex flex-col">
         <div className="space-y-2 flex-1">
-          <h3 className="font-semibold text-sm">{product.brand} {product.model}</h3>
-          <p className="text-xs text-muted-foreground">
-            {product.specs.ram} • {product.specs.storage} • {product.specs.network}
+          <h3 className="font-semibold text-sm line-clamp-2">{product.brand} {product.model}</h3>
+          <p className="text-xs text-muted-foreground line-clamp-2">
+            {product.specs.ram} • {product.specs.storage} • {product.specs.processor}
           </p>
+          {product.specs.battery !== 'Unknown Battery' && (
+            <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium bg-green-50 w-fit px-2 py-0.5 rounded-full mt-1">
+              <Battery className="w-3 h-3" />
+              <span>{product.specs.battery}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div className="space-x-2">
               <span className="font-bold text-lg">₹{product.price.toLocaleString()}</span>
@@ -524,15 +426,13 @@ export default function Storefront() {
               <Badge variant="destructive" className="text-xs">Out of Stock</Badge>
             )}
           </div>
-          <div className="flex items-center gap-1 text-sm">
-            <div className="flex">
-              {[...Array(5)].map((_, i) => (
-                <span key={i} className={`text-xs ${i < Math.floor(product.rating) ? 'text-yellow-400' : 'text-gray-300'}`}>
-                  ★
-                </span>
-              ))}
-            </div>
-            <span className="text-muted-foreground">({product.reviewCount})</span>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="flex items-center bg-green-700 text-white text-xs px-1.5 py-0.5 rounded gap-0.5 font-semibold">
+              {product.rating} <span className="text-[10px]">★</span>
+            </span>
+            <span className="text-muted-foreground text-xs">
+              ({product.ratingCount.toLocaleString()} Ratings & {product.reviewCount.toLocaleString()} Reviews)
+            </span>
           </div>
         </div>
       </CardContent>
@@ -540,7 +440,6 @@ export default function Storefront() {
         <Button
           variant="outline"
           size="sm"
-          className="flex-1"
           onClick={() => setQuickViewProduct(product)}
         >
           Quick View
@@ -548,11 +447,10 @@ export default function Storefront() {
         <Button
           size="sm"
           className="flex-1"
-          onClick={() => addToCart(product)}
-          disabled={!product.inStock}
+          onClick={() => openOnFlipkart(product)}
         >
-          <ShoppingCart className="w-4 h-4" />
-          Add to Cart
+          <ExternalLink className="w-4 h-4 mr-1" />
+          View on Flipkart
         </Button>
       </CardFooter>
     </Card>
@@ -566,7 +464,7 @@ export default function Storefront() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-bold text-primary">FlipkartShop</h1>
+              <h1 className="text-xl font-bold text-primary">Flipkart Product Explorer</h1>
               <Button
                 variant="ghost"
                 size="sm"
@@ -603,21 +501,11 @@ export default function Storefront() {
               </div>
             </div>
 
-            {/* Actions */}
+            {/* Product Stats */}
             <div className="flex items-center space-x-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="relative"
-                onClick={() => setCartOpen(true)}
-              >
-                <ShoppingCart className="w-5 h-5" />
-                {cartCount > 0 && (
-                  <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
-                    {cartCount}
-                  </Badge>
-                )}
-              </Button>
+              <span className="text-sm text-muted-foreground">
+                {totalItems} products found
+              </span>
             </div>
           </div>
         </div>
@@ -627,7 +515,7 @@ export default function Storefront() {
       <div className="bg-primary text-primary-foreground py-2">
         <div className="container max-w-7xl mx-auto px-4">
           <div className="text-center text-sm font-medium">
-            🎉 Back to School Sale - Up to 30% off select devices
+            📊 Explore & Compare Flipkart Products | Real-time Data from Flipkart
           </div>
         </div>
       </div>
@@ -732,11 +620,42 @@ export default function Storefront() {
                 <Button onClick={clearFilters}>Clear All Filters</Button>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-6">
-                {filteredAndSortedProducts.slice(0, pageSize).map(product => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredAndSortedProducts.map(product => (
+                    <ProductCard key={product.id} product={product} />
+                  ))}
+                </div>
+
+                {/* Pagination Controls */}
+                {filteredAndSortedProducts.length > 0 && (
+                  <div className="mt-8 flex items-center justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1 || loading}
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-2" />
+                      Previous
+                    </Button>
+
+                    <div className="text-sm font-medium">
+                      Page {currentPage} of {totalPages}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages || loading}
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -752,14 +671,13 @@ export default function Storefront() {
               </DialogHeader>
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  {/* Main Image with Navigation */}
-                  <div className="aspect-square relative group">
+                  <div className="aspect-square relative group bg-white rounded-lg flex items-center justify-center p-4 border">
                     <img
                       src={selectedProduct.images[selectedImageIndex] || selectedProduct.image}
                       alt={selectedProduct.model}
-                      className="w-full h-full object-cover rounded-lg"
+                      className="w-full h-full object-contain"
                     />
-                    
+
                     {/* Navigation Arrows */}
                     {selectedProduct.images.length > 1 && (
                       <>
@@ -779,7 +697,7 @@ export default function Storefront() {
                         >
                           <ChevronRight className="w-4 h-4" />
                         </Button>
-                        
+
                         {/* Image Counter */}
                         <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
                           {selectedImageIndex + 1} of {selectedProduct.images.length}
@@ -787,18 +705,17 @@ export default function Storefront() {
                       </>
                     )}
                   </div>
-                  
+
                   {/* Thumbnail Navigation */}
                   {selectedProduct.images.length > 1 && (
                     <div className="flex gap-2 overflow-x-auto pb-2">
                       {selectedProduct.images.map((img, index) => (
                         <button
                           key={index}
-                          className={`flex-shrink-0 w-16 h-16 rounded border-2 transition-all ${
-                            index === selectedImageIndex 
-                              ? 'border-primary ring-2 ring-primary/20' 
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
+                          className={`flex-shrink-0 w-16 h-16 rounded border-2 transition-all ${index === selectedImageIndex
+                            ? 'border-primary ring-2 ring-primary/20'
+                            : 'border-gray-200 hover:border-gray-300'
+                            }`}
                           onClick={() => selectImage(index, false)}
                         >
                           <img
@@ -820,27 +737,60 @@ export default function Storefront() {
                           ₹{selectedProduct.originalPrice.toLocaleString()}
                         </span>
                       )}
+                      {selectedProduct.discount > 0 && (
+                        <Badge variant="secondary" className="text-green-600 bg-green-50 font-bold">
+                          {selectedProduct.discount}% OFF
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-sm">
-                      <div className="flex">
-                        {[...Array(5)].map((_, i) => (
-                          <span key={i} className={i < Math.floor(selectedProduct.rating) ? 'text-yellow-400' : 'text-gray-300'}>
-                            ★
-                          </span>
-                        ))}
-                      </div>
-                      <span>({selectedProduct.reviewCount} reviews)</span>
+                      <span className="flex items-center bg-green-700 text-white px-2 py-0.5 rounded text-sm font-semibold gap-1">
+                        {selectedProduct.rating} ★
+                      </span>
+                      <span className="text-muted-foreground text-sm">
+                        {selectedProduct.ratingCount.toLocaleString()} Ratings & {selectedProduct.reviewCount.toLocaleString()} Reviews
+                      </span>
                     </div>
                   </div>
-                  
                   <div className="space-y-2">
                     <h4 className="font-semibold">Specifications</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>RAM: {selectedProduct.specs.ram}</div>
-                      <div>Storage: {selectedProduct.specs.storage}</div>
-                      <div>Network: {selectedProduct.specs.network}</div>
-                      <div>Color: {selectedProduct.specs.color}</div>
+                    <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="text-muted-foreground">RAM</span>
+                        <span>{selectedProduct.specs.ram}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="text-muted-foreground">Storage</span>
+                        <span>{selectedProduct.specs.storage}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="text-muted-foreground">Processor</span>
+                        <span className="text-right">{selectedProduct.specs.processor}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="text-muted-foreground">Battery</span>
+                        <span>{selectedProduct.specs.battery}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="text-muted-foreground">Camera</span>
+                        <span className="text-right">{selectedProduct.specs.camera}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="text-muted-foreground">Display</span>
+                        <span className="text-right">{selectedProduct.specs.display}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="text-muted-foreground">Network</span>
+                        <span>{selectedProduct.specs.network}</span>
+                      </div>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="font-semibold">Warranty</h4>
+                    <p className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
+                      {selectedProduct.warranty}
+                    </p>
                   </div>
 
                   <div>
@@ -862,11 +812,10 @@ export default function Storefront() {
 
                   <Button
                     className="w-full"
-                    onClick={() => addToCart(selectedProduct)}
-                    disabled={!selectedProduct.inStock}
+                    onClick={() => openOnFlipkart(selectedProduct)}
                   >
-                    <ShoppingCart className="w-4 h-4 mr-2" />
-                    {selectedProduct.inStock ? 'Add to Cart' : 'Out of Stock'}
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    View on Flipkart
                   </Button>
                 </div>
               </div>
@@ -885,14 +834,13 @@ export default function Storefront() {
               </DialogHeader>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-3">
-                  {/* Main Image with Navigation */}
-                  <div className="aspect-square relative group">
+                  <div className="aspect-square relative group bg-white rounded-lg flex items-center justify-center p-4 border">
                     <img
                       src={quickViewProduct.images[quickViewImageIndex] || quickViewProduct.image}
                       alt={quickViewProduct.model}
-                      className="w-full h-full object-cover rounded-lg"
+                      className="w-full h-full object-contain"
                     />
-                    
+
                     {/* Navigation Arrows */}
                     {quickViewProduct.images.length > 1 && (
                       <>
@@ -912,7 +860,7 @@ export default function Storefront() {
                         >
                           <ChevronRight className="w-3 h-3" />
                         </Button>
-                        
+
                         {/* Image Counter */}
                         <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
                           {quickViewImageIndex + 1} of {quickViewProduct.images.length}
@@ -920,18 +868,17 @@ export default function Storefront() {
                       </>
                     )}
                   </div>
-                  
+
                   {/* Thumbnail Navigation */}
                   {quickViewProduct.images.length > 1 && (
                     <div className="flex gap-1 overflow-x-auto pb-1">
                       {quickViewProduct.images.map((img, index) => (
                         <button
                           key={index}
-                          className={`flex-shrink-0 w-12 h-12 rounded border-2 transition-all ${
-                            index === quickViewImageIndex 
-                              ? 'border-primary ring-2 ring-primary/20' 
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
+                          className={`flex-shrink-0 w-12 h-12 rounded border-2 transition-all ${index === quickViewImageIndex
+                            ? 'border-primary ring-2 ring-primary/20'
+                            : 'border-gray-200 hover:border-gray-300'
+                            }`}
                           onClick={() => selectImage(index, true)}
                         >
                           <img
@@ -953,7 +900,7 @@ export default function Storefront() {
                       </span>
                     )}
                   </div>
-                  
+
                   <div className="text-sm space-y-1">
                     <div>RAM: {quickViewProduct.specs.ram}</div>
                     <div>Storage: {quickViewProduct.specs.storage}</div>
@@ -962,14 +909,10 @@ export default function Storefront() {
 
                   <Button
                     className="w-full"
-                    onClick={() => {
-                      addToCart(quickViewProduct);
-                      setQuickViewProduct(null);
-                    }}
-                    disabled={!quickViewProduct.inStock}
+                    onClick={() => openOnFlipkart(quickViewProduct)}
                   >
-                    <ShoppingCart className="w-4 h-4 mr-2" />
-                    {quickViewProduct.inStock ? 'Add to Cart' : 'Out of Stock'}
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    View on Flipkart
                   </Button>
                 </div>
               </div>
@@ -978,225 +921,7 @@ export default function Storefront() {
         </DialogContent>
       </Dialog>
 
-      {/* Cart Sheet */}
-      <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-        <SheetContent className="w-full sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>
-              {checkoutStep === "cart" && "Shopping Cart"}
-              {checkoutStep === "checkout" && "Checkout"}
-              {checkoutStep === "success" && "Order Complete"}
-            </SheetTitle>
-          </SheetHeader>
 
-          <div className="mt-6 h-full flex flex-col">
-            {checkoutStep === "cart" && (
-              <>
-                <ScrollArea className="flex-1">
-                  {cart.length === 0 ? (
-                    <div className="text-center py-8">
-                      <ShoppingBag className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">Your cart is empty</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {cart.map((item, index) => (
-                        <div key={index} className="flex gap-3 p-3 border rounded-lg">
-                          <img
-                            src={item.product.image}
-                            alt={item.product.model}
-                            className="w-16 h-16 object-cover rounded"
-                          />
-                          <div className="flex-1">
-                            <h4 className="font-medium text-sm">
-                              {item.product.brand} {item.product.model}
-                            </h4>
-                            <p className="text-xs text-muted-foreground">
-                              {item.variant.color} • {item.variant.storage}
-                            </p>
-                            <div className="flex items-center justify-between mt-2">
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={() => updateCartQuantity(index, item.quantity - 1)}
-                                >
-                                  <SquareMinus className="w-3 h-3" />
-                                </Button>
-                                <span className="text-sm">{item.quantity}</span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={() => updateCartQuantity(index, item.quantity + 1)}
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </Button>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeFromCart(index)}
-                              >
-                                Remove
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="text-sm font-medium">
-                            ₹{(item.product.price * item.quantity).toLocaleString()}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-
-                {cart.length > 0 && (
-                  <div className="mt-6 pt-4 border-t space-y-4">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Subtotal</span>
-                        <span>₹{cartTotal.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span>Shipping</span>
-                        <span>₹149</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span>Tax</span>
-                        <span>₹{Math.round(cartTotal * 0.08).toLocaleString()}</span>
-                      </div>
-                      <Separator />
-                      <div className="flex justify-between font-semibold">
-                        <span>Total</span>
-                        <span>₹{Math.round(cartTotal + 149 + cartTotal * 0.08).toLocaleString()}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Button
-                        className="w-full"
-                        onClick={() => setCheckoutStep("checkout")}
-                      >
-                        Proceed to Checkout
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => setCartOpen(false)}
-                      >
-                        Continue Shopping
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {checkoutStep === "checkout" && (
-              <div className="space-y-4">
-                <ScrollArea className="flex-1 max-h-96">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={checkoutForm.email}
-                        onChange={(e) => setCheckoutForm(prev => ({ ...prev, email: e.target.value }))}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label htmlFor="firstName">First Name</Label>
-                        <Input
-                          id="firstName"
-                          value={checkoutForm.firstName}
-                          onChange={(e) => setCheckoutForm(prev => ({ ...prev, firstName: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="lastName">Last Name</Label>
-                        <Input
-                          id="lastName"
-                          value={checkoutForm.lastName}
-                          onChange={(e) => setCheckoutForm(prev => ({ ...prev, lastName: e.target.value }))}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="address">Address</Label>
-                      <Input
-                        id="address"
-                        value={checkoutForm.address}
-                        onChange={(e) => setCheckoutForm(prev => ({ ...prev, address: e.target.value }))}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label htmlFor="city">City</Label>
-                        <Input
-                          id="city"
-                          value={checkoutForm.city}
-                          onChange={(e) => setCheckoutForm(prev => ({ ...prev, city: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="postalCode">Postal Code</Label>
-                        <Input
-                          id="postalCode"
-                          value={checkoutForm.postalCode}
-                          onChange={(e) => setCheckoutForm(prev => ({ ...prev, postalCode: e.target.value }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </ScrollArea>
-
-                <div className="pt-4 border-t space-y-2">
-                  <Button
-                    className="w-full"
-                    onClick={handleCheckout}
-                    disabled={loading}
-                  >
-                    {loading ? "Processing..." : `Place Order - ₹${Math.round(cartTotal + 149 + cartTotal * 0.08).toLocaleString()}`}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setCheckoutStep("cart")}
-                  >
-                    Back to Cart
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {checkoutStep === "success" && (
-              <div className="text-center py-8 space-y-4">
-                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl">
-                  ✓
-                </div>
-                <h3 className="text-lg font-semibold">Order Complete!</h3>
-                <p className="text-muted-foreground">
-                  Thank you for your purchase. You'll receive a confirmation email shortly.
-                </p>
-                <Button
-                  className="w-full"
-                  onClick={() => {
-                    setCart([]);
-                    setCheckoutStep("cart");
-                    setCartOpen(false);
-                  }}
-                >
-                  Continue Shopping
-                </Button>
-              </div>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

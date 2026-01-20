@@ -3,6 +3,6 @@
 node_modules
 dist
 .next
-.env.example
 .env.local
 __pycache__
+sample.json

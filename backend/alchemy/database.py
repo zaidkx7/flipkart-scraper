@@ -13,8 +13,11 @@ class MysqlConnection:
         self.Session = sessionmaker(bind=self.engine)
         self.session = self.Session()
 
-    def get_products(self):
-        return self.session.query(Products).all()
+    def get_products(self, page: int = 1, limit: int = 20):
+        offset = (page - 1) * limit
+        total = self.session.query(Products).count()
+        products = self.session.query(Products).offset(offset).limit(limit).all()
+        return products, total
     
     def get_products_by_category(self, category: str):
         return self.session.query(Products).filter(Products.category == category).all()
@@ -25,16 +28,23 @@ class MysqlConnection:
     def get_product(self, id: int):
         return self.session.query(Products).filter(Products.id == id).first()
     
-    def search_products(self, query: str):
+    def search_products(self, query: str, page: int = 1, limit: int = 20):
         """Search products by title, category, and specifications"""
         # Convert query to lowercase for case-insensitive search
         search_term = f"%{query.lower()}%"
         
-        return self.session.query(Products).filter(
+        offset = (page - 1) * limit
+        
+        base_query = self.session.query(Products).filter(
             Products.title.ilike(search_term) |
             Products.category.ilike(search_term) |
             Products.specifications.ilike(search_term)
-        ).all()
+        )
+        
+        total = base_query.count()
+        products = base_query.offset(offset).limit(limit).all()
+        
+        return products, total
     
     def get_products_by_price_range(self, min_price: float, max_price: float):
         """Filter products by price range"""
