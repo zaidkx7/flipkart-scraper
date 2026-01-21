@@ -134,13 +134,11 @@ export const productsApi = {
     // Try cache first
     const cached = productCache.get<PaginatedResponse<Product>>(cacheKey);
     if (cached) {
-      console.log('🚀 Products loaded from cache');
       return cached;
     }
 
     try {
-      console.log(`📡 Fetching products page ${page} from API`);
-      const response = await api.get<PaginatedResponse<Product>>(`/api/products/?page=${page}&limit=${limit}`);
+      const response = await api.get<PaginatedResponse<Product>>(`/products/?page=${page}&limit=${limit}`);
       const data = response.data;
 
       // Cache the results
@@ -148,7 +146,6 @@ export const productsApi = {
 
       return data;
     } catch (error) {
-      console.error('Error fetching products:', error);
       throw new Error('Failed to fetch products');
     }
   },
@@ -156,10 +153,9 @@ export const productsApi = {
   // Get single product by ID
   getProductById: async (id: number): Promise<Product> => {
     try {
-      const response = await api.get<Product>(`/api/products/${id}`);
+      const response = await api.get<Product>(`/products/${id}`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching product ${id}:`, error);
       throw new Error(`Failed to fetch product with ID ${id}`);
     }
   },
@@ -171,19 +167,16 @@ export const productsApi = {
     const cacheKey = `search_${query.toLowerCase().trim()}_page_${page}_limit_${limit}`;
     const cached = productCache.get<PaginatedResponse<Product>>(cacheKey);
     if (cached) {
-      console.log('🔍 Search results loaded from cache');
       return cached;
     }
 
     try {
       // First try backend search
-      const response = await api.get<PaginatedResponse<Product>>(`/api/products/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+      const response = await api.get<PaginatedResponse<Product>>(`/products/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
       const results = response.data;
       productCache.set(cacheKey, results, 2 * 60 * 1000); // 2 minutes cache
       return results;
     } catch (error) {
-      console.error('Backend search failed, using client-side search:', error);
-
       // Advanced client-side search with scoring
       const response = await productsApi.getAllProducts(1, 1000); // Fetch mostly all for client side
       const allProducts = response.items;
@@ -245,18 +238,15 @@ export const productsApi = {
     const cacheKey = `category_${category.toLowerCase()}`;
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
-      console.log('📂 Category products loaded from cache');
       return cached;
     }
 
     try {
-      const response = await api.get<Product[]>(`/api/products/category/${encodeURIComponent(category)}`);
+      const response = await api.get<Product[]>(`/products/category/${encodeURIComponent(category)}`);
       const results = response.data;
       productCache.set(cacheKey, results);
       return results;
     } catch (error) {
-      console.error(`Backend category filter failed for ${category}, using client-side:`, error);
-
       // Optimized client-side filtering
       const response = await productsApi.getAllProducts(1, 1000);
       const allProducts = response.items;
@@ -274,18 +264,15 @@ export const productsApi = {
     const cacheKey = `brand_${brand.toLowerCase()}`;
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
-      console.log('🏷️ Brand products loaded from cache');
       return cached;
     }
 
     try {
-      const response = await api.get<Product[]>(`/api/products/brand/${encodeURIComponent(brand)}`);
+      const response = await api.get<Product[]>(`/products/brand/${encodeURIComponent(brand)}`);
       const results = response.data;
       productCache.set(cacheKey, results);
       return results;
     } catch (error) {
-      console.error(`Backend brand filter failed for ${brand}, using client-side:`, error);
-
       // Enhanced brand matching
       const response = await productsApi.getAllProducts(1, 1000);
       const allProducts = response.items;
@@ -314,18 +301,15 @@ export const productsApi = {
     const cacheKey = 'product_stats';
     const cached = productCache.get<any>(cacheKey);
     if (cached) {
-      console.log('📊 Product stats loaded from cache');
       return cached;
     }
 
     try {
-      const response = await api.get('/api/products/stats');
+      const response = await api.get('/products/stats');
       const stats = response.data;
       productCache.set(cacheKey, stats, 15 * 60 * 1000); // 15 minutes cache
       return stats;
     } catch (error) {
-      console.error('Backend stats failed, calculating client-side:', error);
-
       const response = await productsApi.getAllProducts(1, 1000);
       const products = response.items;
       const stats = {
@@ -366,18 +350,15 @@ export const productsApi = {
     const cacheKey = `price_${minPrice}_${maxPrice}`;
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
-      console.log('💰 Price range products loaded from cache');
       return cached;
     }
 
     try {
-      const response = await api.get<Product[]>(`/api/products/filter/price?min_price=${minPrice}&max_price=${maxPrice}`);
+      const response = await api.get<Product[]>(`/products/filter/price?min_price=${minPrice}&max_price=${maxPrice}`);
       const results = response.data;
       productCache.set(cacheKey, results, 3 * 60 * 1000);
       return results;
     } catch (error) {
-      console.error('Backend price filter failed, using client-side:', error);
-
       // Fallback to client-side filtering
       const response = await productsApi.getAllProducts(1, 1000);
       const allProducts = response.items;
@@ -396,18 +377,15 @@ export const productsApi = {
     const cacheKey = `rating_${minRating}`;
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
-      console.log('⭐ Rating products loaded from cache');
       return cached;
     }
 
     try {
-      const response = await api.get<Product[]>(`/api/products/filter/rating?min_rating=${minRating}`);
+      const response = await api.get<Product[]>(`/products/filter/rating?min_rating=${minRating}`);
       const results = response.data;
       productCache.set(cacheKey, results, 3 * 60 * 1000);
       return results;
     } catch (error) {
-      console.error('Backend rating filter failed, using client-side:', error);
-
       const response = await productsApi.getAllProducts(1, 1000);
       const allProducts = response.items;
       const results = allProducts.filter(product =>
@@ -424,18 +402,15 @@ export const productsApi = {
     const cacheKey = `availability_${availability}`;
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
-      console.log('📦 Availability products loaded from cache');
       return cached;
     }
 
     try {
-      const response = await api.get<Product[]>(`/api/products/filter/availability?status=${encodeURIComponent(availability)}`);
+      const response = await api.get<Product[]>(`/products/filter/availability?status=${encodeURIComponent(availability)}`);
       const results = response.data;
       productCache.set(cacheKey, results, 3 * 60 * 1000);
       return results;
     } catch (error) {
-      console.error('Backend availability filter failed, using client-side:', error);
-
       const response = await productsApi.getAllProducts(1, 1000);
       const allProducts = response.items;
       const results = allProducts.filter(product =>
@@ -467,7 +442,6 @@ export const productsApi = {
     const cacheKey = `multi_filter_${btoa(filterKey)}`;
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
-      console.log('🔧 Multi-filter products loaded from cache');
       return cached;
     }
 
@@ -536,18 +510,15 @@ export const productsApi = {
     const cacheKey = `trending_${limit}`;
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
-      console.log('🔥 Trending products loaded from cache');
       return cached;
     }
 
     try {
-      const response = await api.get<Product[]>(`/api/products/trending?limit=${limit}`);
+      const response = await api.get<Product[]>(`/products/trending?limit=${limit}`);
       const results = response.data;
       productCache.set(cacheKey, results, 10 * 60 * 1000);
       return results;
     } catch (error) {
-      console.error('Backend trending products failed, using client-side:', error);
-
       const response = await productsApi.getAllProducts(1, 1000);
       const allProducts = response.items;
 
@@ -573,18 +544,15 @@ export const productsApi = {
     const cacheKey = 'discounted_products';
     const cached = productCache.get<Product[]>(cacheKey);
     if (cached) {
-      console.log('💸 Discounted products loaded from cache');
       return cached;
     }
 
     try {
-      const response = await api.get<Product[]>('/api/products/discounted');
+      const response = await api.get<Product[]>('/products/discounted');
       const results = response.data;
       productCache.set(cacheKey, results, 5 * 60 * 1000);
       return results;
     } catch (error) {
-      console.error('Backend discounted products failed, using client-side:', error);
-
       const response = await productsApi.getAllProducts(1, 1000);
       const allProducts = response.items;
       const results = allProducts.filter(product =>
@@ -603,7 +571,6 @@ export const productsApi = {
   // Clear cache manually
   clearCache: (): void => {
     productCache.clear();
-    console.log('🧹 Product cache cleared');
   },
 
   // Get cache statistics

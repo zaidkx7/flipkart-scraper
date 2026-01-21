@@ -2,7 +2,7 @@ import uvicorn
 
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api.routers import products
+from backend.api.routers import products, auth
 
 app = FastAPI(title='Products API', description='API for flipkart scraped products', version='1.0.0')
 
@@ -16,6 +16,7 @@ app.add_middleware(
 
 api_router = APIRouter(prefix='/api', tags=['api'])
 api_router.include_router(products.router)
+api_router.include_router(auth.router, prefix='/auth')
 
 @app.get('/')
 async def root():

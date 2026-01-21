@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Search, ListFilter, SearchX, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Battery } from "lucide-react";
+import { Search, ListFilter, SearchX, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Battery, LogOut, User as UserIcon, Users } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { productsApi } from "@/api/routers/products";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/context/auth-context";
+
 import {
   transformApiProduct,
   filterProducts,
@@ -82,6 +94,7 @@ export default function Storefront() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
+  const { user, isAuthenticated, logout } = useAuth();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Reset image index when product changes
@@ -171,7 +184,6 @@ export default function Storefront() {
         }));
       } catch (err) {
         setError('Failed to load products. Please try again later.');
-        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -503,9 +515,57 @@ export default function Storefront() {
 
             {/* Product Stats */}
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground hidden md:inline-block">
                 {totalItems} products found
               </span>
+
+              {isAuthenticated && user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                      <Avatar className="h-8 w-8 hover:cursor-pointer">
+                        <AvatarFallback>{user.username.charAt(0).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none">{user.username}</p>
+                        <p className="text-xs leading-none text-muted-foreground">
+                          {user.email}
+                        </p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/profile" className="cursor-pointer w-full flex items-center">
+                        <UserIcon className="mr-2 h-4 w-4" />
+                        <span>Profile</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    {user.role === 'admin' && (
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin/users" className="cursor-pointer w-full flex items-center">
+                          <Users className="mr-2 h-4 w-4" />
+                          <span>Manage Users</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-600 cursor-pointer">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Link href="/login">
+                  <Button variant="default" size="sm">
+                    Login
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         </div>

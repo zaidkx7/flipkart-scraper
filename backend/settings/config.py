@@ -15,6 +15,15 @@ DATABASE_CONFIG = {
     'database': os.getenv('MYSQL_DB'),
 }
 
+AUTH_CONFIG = {
+    'secret_key': os.getenv('SECRET_KEY'),
+    'algorithm': os.getenv('ALGORITHM'),
+    'access_token_expire_minutes': int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES')),
+    'admin_username': os.getenv('ADMIN_USERNAME'),
+    'admin_password': os.getenv('ADMIN_PASSWORD'),
+    'admin_email': os.getenv('ADMIN_EMAIL'),
+}
+
 def get_database_url():
     """Get the database connection URL"""
     return f"mysql+pymysql://{DATABASE_CONFIG['user']}:{DATABASE_CONFIG['password']}@{DATABASE_CONFIG['host']}/{DATABASE_CONFIG['database']}"

@@ -29,3 +29,15 @@ class Products(Base):
         Index('idx_source', 'source', 'id'),
         Index('ix_time', 'time_update'),
     )
+
+
+class User(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    email = Column(String(100), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    is_active = Column(Integer, default=1)  # Using Integer for boolean compatibility in some MySQL versions/drivers, or just Boolean
+    role = Column(String(20), default="user")  # 'admin' or 'user'
+    created_at = Column(DateTime, default=func.current_timestamp())

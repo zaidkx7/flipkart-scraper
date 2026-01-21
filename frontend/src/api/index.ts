@@ -3,7 +3,7 @@ import axios from "axios";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: `${API_BASE_URL}/api`,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -13,11 +13,15 @@ const api = axios.create({
 // Request interceptor for logging
 api.interceptors.request.use(
   (config) => {
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    // Add auth token if available
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
     return config;
   },
   (error) => {
-    console.error('API Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -25,11 +29,9 @@ api.interceptors.request.use(
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
-    console.log(`API Response: ${response.status} ${response.config.url}`);
     return response;
   },
   (error) => {
-    console.error('API Response Error:', error.response?.data || error.message);
     return Promise.reject(error);
   }
 );
