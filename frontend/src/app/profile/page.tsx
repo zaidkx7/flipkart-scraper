@@ -88,7 +88,6 @@ export default function ProfilePage() {
                     <CardContent className="space-y-6">
                         <div className="flex flex-col items-center justify-center space-y-2">
                             <Avatar className="h-24 w-24">
-                                <AvatarImage src="/avatars/01.png" />
                                 <AvatarFallback className="text-2xl">{user.username.charAt(0).toUpperCase()}</AvatarFallback>
                             </Avatar>
                             <div className="text-center">

@@ -1,7 +1,7 @@
 import json
 
 from sqlalchemy import create_engine, func, cast, Float
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.sql import text
 
 from backend.alchemy.models import Products
@@ -9,9 +9,9 @@ from backend.settings.config import DB_URL
 
 class MysqlConnection:
     def __init__(self):
-        self.engine = create_engine(DB_URL)
-        self.Session = sessionmaker(bind=self.engine)
-        self.session = self.Session()
+        self.engine = create_engine(DB_URL, pool_pre_ping=True)
+        session_factory = sessionmaker(bind=self.engine)
+        self.session = scoped_session(session_factory)
 
     def get_products(self, page: int = 1, limit: int = 20):
         offset = (page - 1) * limit
@@ -81,9 +81,9 @@ class MysqlConnection:
             func.count(Products.id).label('count')
         ).group_by(Products.availability).all()
         
-        # Average rating calculation
+        # Average rating calculation - properly reference the table
         avg_rating_result = self.session.query(
-            func.avg(text("JSON_EXTRACT(rating, '$.average')")).label('avg_rating')
+            func.avg(func.json_extract(Products.rating, '$.average')).label('avg_rating')
         ).scalar()
         
         return {
