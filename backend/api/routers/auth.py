@@ -9,7 +9,7 @@ from jose import JWTError, jwt
 
 from backend.settings.config import DB_URL, AUTH_CONFIG
 from backend.alchemy.models import User
-from backend.alchemy.schemas import Token, User as UserSchema, UserCreate, UserUpdate
+from backend.alchemy.schemas import Token, User as UserSchema, UserCreate, UserUpdate, UserAdminUpdate
 from backend.utils.auth import verify_password, create_access_token, get_password_hash
 
 # Database Dependency Setup
@@ -129,8 +129,58 @@ async def update_user_me(
         if existing_user:
             raise HTTPException(status_code=400, detail="Email already registered")
         current_user.email = user_update.email
+        
+    if user_update.password:
+        current_user.hashed_password = get_password_hash(user_update.password)
 
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
     return current_user
+
+@router.put("/users/{user_id}", response_model=UserSchema)
+async def update_user(
+    user_id: int,
+    user_update: UserAdminUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user_update.email and user_update.email != user.email:
+        existing_user = db.query(User).filter(User.email == user_update.email).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user.email = user_update.email
+
+    if user_update.password:
+        user.hashed_password = get_password_hash(user_update.password)
+    
+    if user_update.role is not None:
+        user.role = user_update.role
+
+    if user_update.is_active is not None:
+        user.is_active = user_update.is_active
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
+
+    db.delete(user)
+    db.commit()
+    return {"detail": "User deleted successfully"}

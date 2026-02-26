@@ -8,7 +8,7 @@ router = APIRouter(prefix='/products', tags=['products'])
 @router.get('/')
 def get_products(
     page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page")
+    limit: int = Query(20, ge=1, le=1000, description="Items per page")
 ):
     products, total = mysql.get_products(page, limit)
     total_pages = (total + limit - 1) // limit
@@ -35,7 +35,7 @@ def get_products_by_brand(brand: str):
 def search_products(
     q: str = Query(..., description="Search query"),
     page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page")
+    limit: int = Query(20, ge=1, le=1000, description="Items per page")
 ):
     products, total = mysql.search_products(q, page, limit)
     total_pages = (total + limit - 1) // limit
