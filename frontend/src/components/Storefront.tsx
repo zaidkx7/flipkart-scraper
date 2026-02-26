@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Search, ListFilter, SearchX, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Battery, LogOut, User as UserIcon, Users } from "lucide-react";
+import { Search, ListFilter, SearchX, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Battery, LogOut, User as UserIcon, Users, Database, Activity } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +51,7 @@ interface Filters {
   condition: string[];
   rating: number;
   inStockOnly: boolean;
+  categories: string[];
 }
 
 // Filter options will be dynamically generated from API data
@@ -70,7 +71,8 @@ export default function Storefront() {
     network: [],
     condition: [],
     rating: 0,
-    inStockOnly: false
+    inStockOnly: false,
+    categories: []
   });
   const [filterOptions, setFilterOptions] = useState({
     brands: [] as string[],
@@ -80,6 +82,7 @@ export default function Storefront() {
     network: [] as string[],
     condition: ["New", "Refurbished"] as string[],
     priceRange: [0, 50000] as [number, number],
+    categories: [] as string[],
   });
   const [sortBy, setSortBy] = useState("relevance");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -142,6 +145,30 @@ export default function Storefront() {
     }
   }, [selectedProduct, quickViewProduct]);
 
+  // Fetch global filters on mount
+  useEffect(() => {
+    const fetchGlobalFilters = async () => {
+      try {
+        const globalProducts = await productsApi.fetchGlobalFilterOptions();
+        const transformed = globalProducts.map(transformApiProduct);
+        const options = getFilterOptions(transformed);
+        setFilterOptions(prev => ({
+          ...prev,
+          brands: options.brands,
+          ram: options.ram,
+          storage: options.storage,
+          colors: options.colors,
+          network: options.network,
+          categories: options.categories,
+          priceRange: options.priceRange,
+        }));
+      } catch (err) {
+        console.error("Failed to load global filters", err);
+      }
+    };
+    fetchGlobalFilters();
+  }, []);
+
   // Load products from API on mount and when pagination changes
   useEffect(() => {
     const loadProducts = async () => {
@@ -151,37 +178,21 @@ export default function Storefront() {
 
         let response;
         if (searchQuery.trim()) {
-          // Use search endpoint if query exists
-          response = await productsApi.searchProducts(searchQuery, currentPage, pageSize);
+          // Use search endpoint if query exists, request all via limit 500
+          response = await productsApi.searchProducts(searchQuery, 1, 500);
         } else {
-          // Otherwise get all products
-          response = await productsApi.getAllProducts(currentPage, pageSize);
+          // Otherwise get all products, limit 500 to enable large scale local filters
+          response = await productsApi.getAllProducts(1, 500);
         }
 
         const apiProducts = response.items;
 
-        // Update pagination state
-        setTotalItems(response.total);
-        setTotalPages(response.total_pages);
-
+        // Remove remote pagination updating since we will manage it manually
         const transformedProducts = apiProducts.map(transformApiProduct);
 
         setAllProducts(transformedProducts);
-        setProducts(transformedProducts);
 
-        // Update filter options based on loaded products (Note: For correct global filtering, 
-        // we might typically need a separate endpoint for options, but using current page for now 
-        // or we can fetch a larger set for filters if needed. Sticking to current page for speed.)
-        const options = getFilterOptions(transformedProducts);
-        setFilterOptions(prev => ({
-          ...prev,
-          brands: options.brands,
-          ram: options.ram,
-          storage: options.storage,
-          colors: options.colors,
-          network: options.network,
-          priceRange: options.priceRange,
-        }));
+        // Global filters are now fetched independently on mount.
       } catch (err) {
         setError('Failed to load products. Please try again later.');
       } finally {
@@ -195,13 +206,25 @@ export default function Storefront() {
     }, searchQuery ? 500 : 0);
 
     return () => clearTimeout(timer);
-  }, [currentPage, pageSize, searchQuery]); // Add searchQuery to dependencies
+  }, [searchQuery]); // Removed pagination triggers, now runs once or on search
 
-  // Filter and sort products
+  // Filter and sort products manually from the FULL source
   const filteredAndSortedProducts = useMemo(() => {
-    const filtered = filterProducts(products, filters);
-    return sortProducts(filtered, sortBy);
-  }, [products, filters, sortBy]);
+    const filtered = filterProducts(allProducts, filters);
+    const sorted = sortProducts(filtered, sortBy);
+
+    // Manage dynamic total tracking correctly representing the filtered view
+    setTotalItems(sorted.length);
+    setTotalPages(Math.ceil(sorted.length / pageSize));
+    // Check bounds
+    if (currentPage > Math.ceil(sorted.length / pageSize) && sorted.length > 0) {
+      setCurrentPage(1);
+    }
+
+    // Provide client side slice
+    const startIndex = (currentPage - 1) * pageSize;
+    return sorted.slice(startIndex, startIndex + pageSize);
+  }, [allProducts, filters, sortBy, currentPage, pageSize]);
 
   // Open product on Flipkart
   const openOnFlipkart = useCallback((product: Product) => {
@@ -211,6 +234,7 @@ export default function Storefront() {
   const clearFilters = useCallback(() => {
     setFilters({
       brands: [],
+      categories: [],
       priceRange: filterOptions.priceRange,
       ram: [],
       storage: [],
@@ -226,12 +250,10 @@ export default function Storefront() {
     try {
       setLoading(true);
       productsApi.clearCache();
-      const response = await productsApi.getAllProducts(currentPage, pageSize);
+      const response = await productsApi.getAllProducts(1, 500);
       const transformedProducts = response.items.map(transformApiProduct);
-      setProducts(transformedProducts);
       setAllProducts(transformedProducts);
-      setTotalItems(response.total);
-      setTotalPages(response.total_pages);
+      setCurrentPage(1);
       toast.success('Products refreshed');
     } catch (err) {
       toast.error('Failed to refresh products');
@@ -276,7 +298,34 @@ export default function Storefront() {
   const FilterSection = () => (
     <div className="space-y-6 p-4">
 
-
+      {/* Category Filter */}
+      {filterOptions.categories && filterOptions.categories.length > 0 && (
+        <>
+          <div>
+            <Label className="text-sm font-medium mb-3 block">Category</Label>
+            <div className="space-y-2">
+              {filterOptions.categories.map(category => (
+                <div key={category} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`category - ${category} `}
+                    checked={filters.categories?.includes(category)}
+                    onCheckedChange={(checked) => {
+                      setFilters(prev => ({
+                        ...prev,
+                        categories: checked
+                          ? [...(prev.categories || []), category]
+                          : (prev.categories || []).filter(c => c !== category)
+                      }));
+                    }}
+                  />
+                  <Label htmlFor={`category - ${category} `} className="text-sm">{category}</Label>
+                </div>
+              ))}
+            </div>
+          </div>
+          <Separator />
+        </>
+      )}
       {/* Price Range */}
       <div>
         <Label className="text-sm font-medium mb-3 block">
@@ -305,7 +354,7 @@ export default function Storefront() {
           {filterOptions.brands.map(brand => (
             <div key={brand} className="flex items-center space-x-2">
               <Checkbox
-                id={`brand-${brand}`}
+                id={`brand - ${brand} `}
                 checked={filters.brands.includes(brand)}
                 onCheckedChange={(checked) => {
                   setFilters(prev => ({
@@ -316,7 +365,7 @@ export default function Storefront() {
                   }));
                 }}
               />
-              <Label htmlFor={`brand-${brand}`} className="text-sm">{brand}</Label>
+              <Label htmlFor={`brand - ${brand} `} className="text-sm">{brand}</Label>
             </div>
           ))}
         </div>
@@ -331,7 +380,7 @@ export default function Storefront() {
           {filterOptions.ram.map(ram => (
             <div key={ram} className="flex items-center space-x-2">
               <Checkbox
-                id={`ram-${ram}`}
+                id={`ram - ${ram} `}
                 checked={filters.ram.includes(ram)}
                 onCheckedChange={(checked) => {
                   setFilters(prev => ({
@@ -342,7 +391,7 @@ export default function Storefront() {
                   }));
                 }}
               />
-              <Label htmlFor={`ram-${ram}`} className="text-sm">{ram}</Label>
+              <Label htmlFor={`ram - ${ram} `} className="text-sm">{ram}</Label>
             </div>
           ))}
         </div>
@@ -357,7 +406,7 @@ export default function Storefront() {
           {filterOptions.storage.map(storage => (
             <div key={storage} className="flex items-center space-x-2">
               <Checkbox
-                id={`storage-${storage}`}
+                id={`storage - ${storage} `}
                 checked={filters.storage.includes(storage)}
                 onCheckedChange={(checked) => {
                   setFilters(prev => ({
@@ -368,7 +417,7 @@ export default function Storefront() {
                   }));
                 }}
               />
-              <Label htmlFor={`storage-${storage}`} className="text-sm">{storage}</Label>
+              <Label htmlFor={`storage - ${storage} `} className="text-sm">{storage}</Label>
             </div>
           ))}
         </div>
@@ -401,7 +450,7 @@ export default function Storefront() {
           <div className="h-48 flex items-center justify-center p-4 bg-white rounded-t-lg relative">
             <img
               src={product.image}
-              alt={`${product.brand} ${product.model}`}
+              alt={`${product.brand} ${product.model} `}
               className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
               onClick={() => setSelectedProduct(product)}
             />
@@ -484,7 +533,7 @@ export default function Storefront() {
                 disabled={loading}
                 title="Refresh products"
               >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w - 4 h - 4 ${loading ? 'animate-spin' : ''} `} />
               </Button>
             </div>
 
@@ -544,13 +593,27 @@ export default function Storefront() {
                         <span>Profile</span>
                       </Link>
                     </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/scraper" className="cursor-pointer w-full flex items-center">
+                        <Database className="mr-2 h-4 w-4" />
+                        <span>Scraper Module</span>
+                      </Link>
+                    </DropdownMenuItem>
                     {user.role === 'admin' && (
-                      <DropdownMenuItem asChild>
-                        <Link href="/admin/users" className="cursor-pointer w-full flex items-center">
-                          <Users className="mr-2 h-4 w-4" />
-                          <span>Manage Users</span>
-                        </Link>
-                      </DropdownMenuItem>
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href="/admin/users" className="cursor-pointer w-full flex items-center">
+                            <Users className="mr-2 h-4 w-4" />
+                            <span>Manage Users</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/admin/monitoring" className="cursor-pointer w-full flex items-center">
+                            <Activity className="mr-2 h-4 w-4" />
+                            <span>System Monitoring</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-600 cursor-pointer">
@@ -772,10 +835,10 @@ export default function Storefront() {
                       {selectedProduct.images.map((img, index) => (
                         <button
                           key={index}
-                          className={`flex-shrink-0 w-16 h-16 rounded border-2 transition-all ${index === selectedImageIndex
+                          className={`flex - shrink - 0 w - 16 h - 16 rounded border - 2 transition - all ${index === selectedImageIndex
                             ? 'border-primary ring-2 ring-primary/20'
                             : 'border-gray-200 hover:border-gray-300'
-                            }`}
+                            } `}
                           onClick={() => selectImage(index, false)}
                         >
                           <img
@@ -935,10 +998,10 @@ export default function Storefront() {
                       {quickViewProduct.images.map((img, index) => (
                         <button
                           key={index}
-                          className={`flex-shrink-0 w-12 h-12 rounded border-2 transition-all ${index === quickViewImageIndex
+                          className={`flex - shrink - 0 w - 12 h - 12 rounded border - 2 transition - all ${index === quickViewImageIndex
                             ? 'border-primary ring-2 ring-primary/20'
                             : 'border-gray-200 hover:border-gray-300'
-                            }`}
+                            } `}
                           onClick={() => selectImage(index, true)}
                         >
                           <img

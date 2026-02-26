@@ -160,6 +160,13 @@ export const productsApi = {
     }
   },
 
+  // Fetch all options globally across items
+  fetchGlobalFilterOptions: async () => {
+    // We use a reasonably high limit to capture variation. Cached automatically.
+    const response = await productsApi.getAllProducts(1, 500);
+    return response.items;
+  },
+
   // Enhanced search with fuzzy matching and caching
   searchProducts: async (query: string, page: number = 1, limit: number = 20): Promise<PaginatedResponse<Product>> => {
     if (!query.trim()) return { items: [], total: 0, page: 1, limit: 20, total_pages: 0 };

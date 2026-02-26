@@ -43,4 +43,14 @@ export const authApi = {
         const response = await api.put<User>('/auth/users/me', data);
         return response.data;
     },
+
+    updateUser: async (id: number, data: any): Promise<User> => {
+        const response = await api.put<User>(`/auth/users/${id}`, data);
+        return response.data;
+    },
+
+    deleteUser: async (id: number): Promise<{ detail: string }> => {
+        const response = await api.delete<{ detail: string }>(`/auth/users/${id}`);
+        return response.data;
+    },
 };

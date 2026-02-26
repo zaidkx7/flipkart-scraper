@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, RefreshCw, ChevronLeft } from "lucide-react";
+import { Plus, Loader2, RefreshCw, ChevronLeft, Edit, Trash2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { authApi, User } from "@/api/routers/auth";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,16 @@ export default function UsersPage() {
         email: "",
         password: "",
         role: "user"
+    });
+
+    // Edit User State
+    const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [editFormData, setEditFormData] = useState({
+        email: "",
+        password: "",
+        role: "user",
+        is_active: true
     });
 
     useEffect(() => {
@@ -69,6 +79,48 @@ export default function UsersPage() {
             toast.error(error.response?.data?.detail || "Failed to create user");
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleEditClick = (user: User) => {
+        setEditingUser(user);
+        setEditFormData({
+            email: user.email,
+            password: "",
+            role: user.role,
+            is_active: user.is_active
+        });
+        setEditDialogOpen(true);
+    };
+
+    const handleUpdateUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingUser) return;
+        setSubmitting(true);
+        try {
+            const updateData: any = { role: editFormData.role, is_active: editFormData.is_active };
+            if (editFormData.email !== editingUser.email) updateData.email = editFormData.email.trim();
+            if (editFormData.password) updateData.password = editFormData.password.trim();
+
+            await authApi.updateUser(editingUser.id, updateData);
+            toast.success("User updated successfully");
+            setEditDialogOpen(false);
+            loadUsers();
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || "Failed to update user");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleDeleteUser = async (id: number) => {
+        if (!confirm("Are you sure you want to delete this user?")) return;
+        try {
+            await authApi.deleteUser(id);
+            toast.success("User deleted successfully");
+            loadUsers();
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || "Failed to delete user");
         }
     };
 
@@ -163,6 +215,78 @@ export default function UsersPage() {
                                 </form>
                             </DialogContent>
                         </Dialog>
+
+                        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Edit User: {editingUser?.username}</DialogTitle>
+                                    <DialogDescription>
+                                        Update user details, role, or active status.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <form onSubmit={handleUpdateUser}>
+                                    <div className="grid gap-4 py-4">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="edit-email">Email</Label>
+                                            <Input
+                                                id="edit-email"
+                                                type="email"
+                                                value={editFormData.email}
+                                                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                                                required
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="edit-password">New Password (optional)</Label>
+                                            <Input
+                                                id="edit-password"
+                                                type="password"
+                                                placeholder="Leave blank to keep current"
+                                                value={editFormData.password}
+                                                onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="edit-role">Role</Label>
+                                            <Select
+                                                value={editFormData.role}
+                                                onValueChange={(value) => setEditFormData({ ...editFormData, role: value })}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select role" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="user">User</SelectItem>
+                                                    <SelectItem value="admin">Admin</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="edit-status">Status</Label>
+                                            <Select
+                                                value={editFormData.is_active ? "active" : "inactive"}
+                                                onValueChange={(value) => setEditFormData({ ...editFormData, is_active: value === "active" })}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select status" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="active">Active</SelectItem>
+                                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+                                        <Button type="submit" disabled={submitting}>
+                                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Save Changes
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -175,6 +299,7 @@ export default function UsersPage() {
                                 <TableHead>Role</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Created At</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -196,11 +321,32 @@ export default function UsersPage() {
                                     <TableCell className="text-muted-foreground text-sm">
                                         {new Date(user.created_at).toLocaleDateString()}
                                     </TableCell>
+                                    <TableCell className="text-right">
+                                        <div className="flex justify-end gap-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleEditClick(user)}
+                                                className="h-8 w-8 p-0"
+                                            >
+                                                <Edit className="h-4 w-4 text-primary" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleDeleteUser(user.id)}
+                                                className="h-8 w-8 p-0"
+                                                disabled={user.id === currentUser?.id}
+                                            >
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
                                 </TableRow>
                             ))}
                             {!loading && users.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center h-24">
+                                    <TableCell colSpan={7} className="text-center h-24">
                                         No users found.
                                     </TableCell>
                                 </TableRow>

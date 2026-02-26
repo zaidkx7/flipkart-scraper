@@ -178,7 +178,7 @@ export const filterProducts = (
     network?: string[];
     rating?: number;
     inStockOnly?: boolean;
-    category?: string;
+    categories?: string[];
   }
 ): FrontendProduct[] => {
   return products.filter(product => {
@@ -217,7 +217,7 @@ export const filterProducts = (
       return false;
     }
 
-    if (filters.category && product.category !== filters.category) {
+    if (filters.categories && filters.categories.length > 0 && !filters.categories.includes(product.category)) {
       return false;
     }
 

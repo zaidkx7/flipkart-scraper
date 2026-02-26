@@ -8,12 +8,13 @@ export const useProducts = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Load all products
-  const loadProducts = useCallback(async (useCache: boolean = true) => {
+  const loadProducts = useCallback(async (page: number = 1, limit: number = 20) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await productsApi.getAllProducts(useCache);
-      setProducts(data);
+      const data = await productsApi.getAllProducts(page, limit);
+      // Data is a paginated response, so we extract items
+      setProducts(data.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load products');
     } finally {
@@ -32,7 +33,7 @@ export const useProducts = () => {
       setLoading(true);
       setError(null);
       const data = await productsApi.searchProducts(query);
-      setProducts(data);
+      setProducts(data.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
@@ -135,7 +136,7 @@ export const useProducts = () => {
   // Clear cache and reload
   const refresh = useCallback(async () => {
     productsApi.clearCache();
-    await loadProducts(false);
+    await loadProducts(1, 20);
   }, [loadProducts]);
 
   // Get cache stats
