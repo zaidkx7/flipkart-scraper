@@ -8,8 +8,21 @@ A full-stack web application that scrapes product data from Flipkart and present
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
+## 📸 Screenshots
+
+| Dashboard & Metrics | Scraper Interface |
+|:---:|:---:|
+| <img src="assets/metrics.png" alt="Dashboard" width="100%"/> | <img src="assets/scraper.png" alt="Scraper Interface" width="100%"/> |
+| **Search & Filters** | **Data Pagination** |
+| <img src="assets/filters.png" alt="Filters" width="100%"/> | <img src="assets/pagination.png" alt="Pagination" width="100%"/> |
+| **User Management** | **User Profile** |
+| <img src="assets/users.png" alt="User Management" width="100%"/> | <img src="assets/profile.png" alt="User Profile" width="100%"/> |
+| **Settings Configuration** | **Authentication** |
+| <img src="assets/settings.png" alt="Settings" width="100%"/> | <img src="assets/login.png" alt="Authentication" width="100%"/> |
+
 ## 📋 Table of Contents
 
+- [Screenshots](#-screenshots)
 - [Features](#-features)
 - [Tech Stack](#-tech-stack)
 - [Project Structure](#-project-structure)
@@ -22,6 +35,7 @@ A full-stack web application that scrapes product data from Flipkart and present
 - [Development](#-development)
 - [Contributing](#-contributing)
 - [License](#-license)
+
 
 ## ✨ Features
 
